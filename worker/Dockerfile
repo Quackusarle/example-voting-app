@@ -14,10 +14,10 @@ ARG TARGETARCH
 
 WORKDIR /source
 COPY *.csproj .
-RUN dotnet restore -a $TARGETARCH
+RUN dotnet restore
 
 COPY . .
-RUN dotnet publish -c release -o /app -a $TARGETARCH --self-contained false --no-restore
+RUN dotnet publish --use-current-runtime --self-contained false -o /app
 
 # app image
 FROM mcr.microsoft.com/dotnet/runtime:7.0
