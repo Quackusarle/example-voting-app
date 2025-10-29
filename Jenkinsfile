@@ -28,7 +28,7 @@ pipeline {
     environment {
         AWS_REGION        = 'ap-southeast-1'
         AWS_ACCOUNT_ID    = '332305705434'
-        ECR_REPO_NAME     = 'voting-app' 
+        ECR_REPO_NAME     = 'example-voting-app' 
         
         GITOPS_REPO_USER  = 'Quackusarle'
         GITOPS_REPO_NAME  = 'example-voting-app'
@@ -69,20 +69,25 @@ pipeline {
                 expression { params.SERVICE_NAME != 'ALL' }
             }
             steps {
-                script {
-                    sh 'git config --global user.email "jenkins-ci@bot.com"'
-                    sh 'git config --global user.name "Jenkins CI Bot"'
+                withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
+                    script {
+                        sh 'git config --global user.email "jenkins-ci@bot.com"'
+                        sh 'git config --global user.name "Jenkins CI Bot"'
 
-                    def valuesFile = "voting-app-chart/values.yaml"
-                    def newTag = "${params.SERVICE_NAME}-${BUILD_NUMBER}"
-                    
-                    echo "Updating ${valuesFile} for service '${params.SERVICE_NAME}' with new tag: ${newTag}"
-                    
-                    sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s/  tag: .*/  tag: \"${newTag}\"/}' ${valuesFile}"
+                        def valuesFile = "voting-app-chart/values.yaml"
+                        def newTag = "${params.SERVICE_NAME}-${BUILD_NUMBER}"
+                        
+                        echo "Updating ${valuesFile} for service '${params.SERVICE_NAME}' with new tag: ${newTag}"
+                        
+                        sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s/  tag: .*/  tag: \"${newTag}\"/}' ${valuesFile}"
 
-                    sh "git add ${valuesFile}"
-                    sh "git diff-index --quiet HEAD || git commit -m 'CI: Update Helm tag for ${params.SERVICE_NAME} to ${newTag}'"
-                    sh "git push origin HEAD:${GITOPS_REPO_BRANCH}"
+                        sh "git add ${valuesFile}"
+                        sh "git diff-index --quiet HEAD || git commit -m 'CI: Update Helm tag for ${params.SERVICE_NAME} to ${newTag}'"
+                        
+                        def remoteUrlWithToken = "https://Quackusarle:${GITHUB_TOKEN}@github.com/Quackusarle/example-voting-app.git"
+                        
+                        sh "git push ${remoteUrlWithToken} HEAD:${GITOPS_REPO_BRANCH}"
+                    }
                 }
             }
         }
