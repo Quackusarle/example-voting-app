@@ -28,7 +28,7 @@ pipeline {
     environment {
         AWS_REGION        = 'ap-southeast-1'
         AWS_ACCOUNT_ID    = '332305705434'
-        ECR_REPO_NAME     = 'example-voting-app' 
+        ECR_REPO_NAME     = 'voting-app' 
         
         GITOPS_REPO_USER  = 'Quackusarle'
         GITOPS_REPO_NAME  = 'example-voting-app'
