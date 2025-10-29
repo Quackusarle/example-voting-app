@@ -1,8 +1,6 @@
 def buildAndPush(String serviceName, String buildNumber, String dockerhubUser) {
     echo "Building and pushing service: ${serviceName} to Docker Hub"
-
     def imageNameWithTag = "${dockerhubUser}/${serviceName}:${buildNumber}"
-
     dir(serviceName) {
         sh "docker build -t ${imageNameWithTag} ."
     }
@@ -18,20 +16,14 @@ def buildAndPushAll(String buildNumber, String dockerhubUser) {
 
 pipeline {
     agent any
-
     parameters {
-        choice(
-            name: 'SERVICE_NAME',
-            choices: ['vote', 'result', 'worker', 'ALL'],
-            description: 'Select the service to build and push to Docker Hub'
-        )
+        choice(name: 'SERVICE_NAME', choices: ['vote', 'result', 'worker', 'ALL'], description: 'Select a service')
     }
     
     environment {
         DOCKERHUB_USER = 'quackusarle' 
-        
-        GITOPS_REPO_USER   = 'Quackusarle'
-        GITOPS_REPO_NAME   = 'example-voting-app'
+        GITOPS_REPO_USER = 'Quackusarle'
+        GITOPS_REPO_NAME = 'example-voting-app'
         GITOPS_REPO_BRANCH = 'main'
     }
     
@@ -53,9 +45,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     script {
-                        echo "Logging into Docker Hub..."
                         sh "echo ${DOCKER_PASS} | docker login --username ${DOCKER_USER} --password-stdin"
-                        
                         if (params.SERVICE_NAME == 'ALL') {
                             buildAndPushAll(BUILD_NUMBER, DOCKERHUB_USER)
                         } else {
@@ -71,24 +61,27 @@ pipeline {
                 expression { params.SERVICE_NAME != 'ALL' }
             }
             steps {
-                script {
-                    sh 'git config --global user.email "jenkins-ci@bot.com"'
-                    sh 'git config --global user.name "Jenkins CI Bot"'
+                withCredentials([string(credentialsId: 'github-pat', variable: 'GITHUB_TOKEN')]) {
+                    script {
+                        sh 'git config --global user.email "jenkins-ci@bot.com"'
+                        sh 'git config --global user.name "Jenkins CI Bot"'
 
-                    def valuesFile = "voting-app-chart/values.yaml"
-                    def newTag = "${BUILD_NUMBER}"
-                    def newRepo = "${DOCKERHUB_USER}/${params.SERVICE_NAME}"
-                    
-                    echo "Updating ${valuesFile} for service '${params.SERVICE_NAME}' with repo: ${newRepo} and tag: ${newTag}"
-                    
-                    sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
+                        def valuesFile = "voting-app-chart/values.yaml"
+                        def newTag = "${BUILD_NUMBER}"
+                        def newRepo = "${DOCKERHUB_USER}/${params.SERVICE_NAME}"
+                        
+                        echo "Updating ${valuesFile} for service '${params.SERVICE_NAME}'"
+                        
+                        sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
+                        sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${newTag}\"|}' ${valuesFile}"
 
-                    sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${newTag}\"|}' ${valuesFile}"
-
-                    sh "git add ${valuesFile}"
-                    sh "git diff-index --quiet HEAD || git commit -m 'CI: Update Helm values for ${params.SERVICE_NAME} to version ${BUILD_NUMBER}'"
-
-                    sh "git push origin HEAD:${GITOPS_REPO_BRANCH}"
+                        sh "git add ${valuesFile}"
+                        sh "git diff-index --quiet HEAD || git commit -m 'CI: Update Helm values for ${params.SERVICE_NAME} to version ${BUILD_NUMBER}'"
+                        
+                        def remoteUrlWithToken = "https://${GITOPS_REPO_USER}:${GITHUB_TOKEN}@github.com/${GITOPS_REPO_USER}/${GITOPS_REPO_NAME}.git"
+                        
+                        sh "git push ${remoteUrlWithToken} HEAD:${GITOPS_REPO_BRANCH}"
+                    }
                 }
             }
         }
@@ -96,7 +89,6 @@ pipeline {
     
     post {
         always {
-            echo "Logging out from Docker Hub"
             sh 'docker logout'
         }
     }
