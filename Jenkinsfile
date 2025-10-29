@@ -44,7 +44,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
                     userRemoteConfigs: [[
-                        credentialsId: 'github-credentials',
+                        credentialsId: 'github-pat',
                         url: "https://github.com/${GITOPS_REPO_USER}/${GITOPS_REPO_NAME}.git"
                     ]]
                 ])
@@ -55,7 +55,6 @@ pipeline {
             steps {
                 script {
                     sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-
                     if (params.SERVICE_NAME == 'ALL') {
                         buildAndPushAll(BUILD_NUMBER, ECR_REGISTRY, ECR_REPO_NAME)
                     } else {
@@ -65,7 +64,7 @@ pipeline {
             }
         }
         
-        stage('Update Kubernetes Manifest (GitOps Trigger)') {
+        stage('Update Helm Values (GitOps Trigger)') {
             when {
                 expression { params.SERVICE_NAME != 'ALL' }
             }
@@ -74,17 +73,15 @@ pipeline {
                     sh 'git config --global user.email "jenkins-ci@bot.com"'
                     sh 'git config --global user.name "Jenkins CI Bot"'
 
-                    def manifestDir = "k8s-specifications"
-                    def deploymentFile = "${manifestDir}/${params.SERVICE_NAME}-deployment.yaml"
-                    def newImage = "${ECR_REGISTRY}/${ECR_REPO_NAME}:${params.SERVICE_NAME}-${BUILD_NUMBER}"
+                    def valuesFile = "voting-app-chart/values.yaml"
+                    def newTag = "${params.SERVICE_NAME}-${BUILD_NUMBER}"
                     
-                    echo "Updating ${deploymentFile} with new image: ${newImage}"
+                    echo "Updating ${valuesFile} for service '${params.SERVICE_NAME}' with new tag: ${newTag}"
                     
-                    sh "sed -i 's|image: .*|image: ${newImage}|g' ${deploymentFile}"
+                    sh "sed -i -e '/^${params.SERVICE_NAME}:/,/^[a-zA-Z]/{s/  tag: .*/  tag: \"${newTag}\"/}' ${valuesFile}"
 
-                    sh "git add ${deploymentFile}"
-                    sh "git diff-index --quiet HEAD || git commit -m 'CI: Update image for ${params.SERVICE_NAME} to version ${BUILD_NUMBER}'"
-                    
+                    sh "git add ${valuesFile}"
+                    sh "git diff-index --quiet HEAD || git commit -m 'CI: Update Helm tag for ${params.SERVICE_NAME} to ${newTag}'"
                     sh "git push origin HEAD:${GITOPS_REPO_BRANCH}"
                 }
             }
