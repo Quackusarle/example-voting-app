@@ -61,7 +61,7 @@ pipeline {
                 expression { params.SERVICE_NAME != 'ALL' }
             }
             steps {
-                withCredentials([string(credentialsId: 'github-pat', variable: 'GITHUB_TOKEN')]) {
+                withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
                     script {
                         sh 'git config --global user.email "jenkins-ci@bot.com"'
                         sh 'git config --global user.name "Jenkins CI Bot"'
