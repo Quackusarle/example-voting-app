@@ -15,7 +15,7 @@ spec:
         app: result
     spec:
       containers:
-      - image: "{{ .Values.imageRegistry }}/{{ .Values.result.repository }}:{{ .Values.result.tag }}"
+      - image: "{{ .Values.result.repository }}:{{ .Values.result.tag }}"
         name: result
         ports:
         - containerPort: 80
