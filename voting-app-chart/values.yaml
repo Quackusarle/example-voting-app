@@ -1,7 +1,5 @@
-imageRegistry: "332305705434.dkr.ecr.ap-southeast-1.amazonaws.com"
-
 vote:
-  repository: "example-voting-app"
+  repository: "quackusarle/vote"
   tag: "initial-tag"
   replicaCount: 1
   service:
@@ -11,7 +9,7 @@ vote:
     nodePort: 31000
 
 result:
-  repository: "example-voting-app"
+  repository: "quackusarle/result"
   tag: "initial-tag"
   replicaCount: 1
   service:
@@ -21,7 +19,7 @@ result:
     nodePort: 31001
 
 worker:
-  repository: "example-voting-app"
+  repository: "quackusarle/worker"
   tag: "initial-tag"
   replicaCount: 1
 
