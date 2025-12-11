@@ -1,29 +1,24 @@
 pipeline {
     agent {
         kubernetes {
-        yaml '''
+            yaml '''
             apiVersion: v1
             kind: Pod
             spec:
               containers:
               - name: buildah
-                image: quay.io/buildah/stable:v1.33
+                image: quay.io/buildah/stable:latest
                 command: ["sleep"]
                 args: ["infinity"]
-                securityContext:
-                  capabilities:
-                    add: ["SETFCAP"]
+                env:
+                - name: STORAGE_DRIVER
+                  value: vfs
                 volumeMounts:
                   - name: varlibcontainers
                     mountPath: /var/lib/containers
-                  - name: dev-fuse
-                    mountPath: /dev/fuse
               volumes:
                 - name: varlibcontainers
                   emptyDir: {}
-                - name: dev-fuse
-                  hostPath:
-                    path: /dev/fuse
             '''
         }
     }
