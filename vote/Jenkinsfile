@@ -16,9 +16,14 @@ pipeline {
                 volumeMounts:
                   - name: varlibcontainers
                     mountPath: /var/lib/containers
+                  - name: dev-fuse
+                    mountPath: /dev/fuse
               volumes:
                 - name: varlibcontainers
                   emptyDir: {}
+                - name: dev-fuse
+                  hostPath:
+                    path: /dev/fuse
             '''
         }
     }
