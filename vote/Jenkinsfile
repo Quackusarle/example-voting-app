@@ -1,0 +1,83 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+            apiVersion: v1
+            kind: Pod
+            spec:
+              containers:
+              - name: buildah
+                image: quay.io/buildah/stable:v1.33
+                command: ["sleep"]
+                args: ["infinity"]
+                securityContext:
+                  capabilities:
+                    add: ["SETFCAP"]
+                volumeMounts:
+                  - name: varlibcontainers
+                    mountPath: /var/lib/containers
+              volumes:
+                - name: varlibcontainers
+                  emptyDir: {}
+            '''
+        }
+    }
+
+    environment {
+        SERVICE_NAME = 'vote'
+        DOCKERHUB_USER = 'quackusarle'
+        REPO_USER = 'Quackusarle'
+        REPO_NAME = 'example-voting-app'
+        BRANCH = 'main'
+    }
+    
+    stages {
+        stage('Build and Push') {
+            steps {
+                dir(SERVICE_NAME) {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        container('buildah') {
+                            sh "buildah login -u ${USER} -p ${PASS} docker.io"
+                            sh "buildah bud --format docker -t ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} ."
+                            sh "buildah bud --format docker -t ${DOCKERHUB_USER}/${SERVICE_NAME}:latest ."
+                            sh "buildah push ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}"
+                            sh "buildah push ${DOCKERHUB_USER}/${SERVICE_NAME}:latest"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Update Helm Values') {
+            steps {
+                withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
+                    script {
+                        sh "git clone https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/${REPO_NAME}.git temp-repo"
+                        dir('temp-repo') {
+                            sh 'git config --global user.email "jenkins-ci@bot.com"'
+                            sh 'git config --global user.name "Jenkins CI Bot"'
+
+                            def valuesFile = "voting-app-chart/values.yaml"
+                            def newRepo = "${DOCKERHUB_USER}/${SERVICE_NAME}"
+                            
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${BUILD_NUMBER}\"|}' ${valuesFile}"
+
+                            sh "git add ${valuesFile}"
+                            sh "git diff-index --quiet HEAD || git commit -m 'CI: Update image for ${SERVICE_NAME} to tag ${BUILD_NUMBER}'"
+                            sh "git push origin HEAD:${BRANCH}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                try { container('buildah') { sh 'buildah logout docker.io' } } catch (e) {}
+            }
+        }
+    }
+}
