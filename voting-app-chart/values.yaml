@@ -10,7 +10,7 @@ vote:
 
 result:
   repository: "quackusarle/result"
-  tag: "initial-tag"
+  tag: "1"
   replicaCount: 1
   service:
     type: NodePort
