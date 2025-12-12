@@ -24,7 +24,7 @@ pipeline {
     }
 
     environment {
-        SERVICE_NAME = 'result'
+        SERVICE_NAME = 'vote'
         DOCKERHUB_USER = 'quackusarle'
         REPO_USER = 'Quackusarle'
         REPO_NAME = 'example-voting-app'
