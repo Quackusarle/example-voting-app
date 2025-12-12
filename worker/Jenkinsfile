@@ -32,17 +32,6 @@ pipeline {
     }
     
     stages {
-        stage('Checkout Code') {
-            steps {
-                withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
-                    script {
-                        sh "rm -rf *"
-                        def repoUrlWithToken = "https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/${REPO_NAME}.git"
-                        sh "git clone -b ${BRANCH} ${repoUrlWithToken} ."
-                    }
-                }
-            }
-        }
 
         stage('Build and Push') {
             steps {
