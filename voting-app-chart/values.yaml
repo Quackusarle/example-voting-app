@@ -20,7 +20,7 @@ result:
 
 worker:
   repository: "quackusarle/worker"
-  tag: "initial-tag"
+  tag: "2"
   replicaCount: 1
 
 redis:
