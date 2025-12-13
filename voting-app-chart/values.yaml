@@ -1,6 +1,6 @@
 vote:
   repository: "quackusarle/vote"
-  tag: "12"
+  tag: "14"
   replicaCount: 1
   service:
     type: LoadBalancer
@@ -13,7 +13,7 @@ vote:
 
 result:
   repository: "quackusarle/result"
-  tag: "2"
+  tag: "3"
   replicaCount: 1
   service:
     type: LoadBalancer
