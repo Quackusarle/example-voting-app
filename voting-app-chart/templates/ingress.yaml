@@ -1,18 +1,23 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: voting-app-ingress
+  name: main-ingress
   namespace: example-voting-app
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+    
     alb.ingress.kubernetes.io/subnets: "subnet-08c1afcaa1f18ab99, subnet-0b72b1546b3106d25, subnet-0419600404fdffb80"
+    
+    alb.ingress.kubernetes.io/group.name: "apps"
+    
     alb.ingress.kubernetes.io/healthcheck-path: "/"
     
 spec:
   rules:
-    - http:
+    - host: vote.auctionhub.uk
+      http:
         paths:
           - path: /
             pathType: Prefix
@@ -21,8 +26,11 @@ spec:
                 name: vote
                 port:
                   number: 80
-          
-          - path: /result
+                  
+    - host: result.auctionhub.uk
+      http:
+        paths:
+          - path: /
             pathType: Prefix
             backend:
               service:
