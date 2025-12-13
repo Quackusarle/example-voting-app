@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: main-ingress
+  name: ingress
   namespace: example-voting-app
   annotations:
     kubernetes.io/ingress.class: alb
