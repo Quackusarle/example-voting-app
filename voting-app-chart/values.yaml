@@ -16,7 +16,7 @@ result:
 
 worker:
   repository: "quackusarle/worker"
-  tag: "2"
+  tag: "4"
   replicaCount: 1
 
 redis:
