@@ -14,7 +14,7 @@ spec:
   rules:
     - http:
         paths:
-          - path: /vote
+          - path: /
             pathType: Prefix
             backend:
               service:
@@ -22,7 +22,7 @@ spec:
                 port:
                   number: 80
           
-          - path: /
+          - path: /result
             pathType: Prefix
             backend:
               service:
