@@ -9,6 +9,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/subnets: "subnet-08c1afcaa1f18ab99, subnet-0b72b1546b3106d25, subnet-0419600404fdffb80"
     alb.ingress.kubernetes.io/group.name: "apps"
+    alb.ingress.kubernetes.io/backend-protocol: HTTPS
 spec:
   rules:
     - host: argocd.auctionhub.uk
@@ -20,4 +21,4 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 80
+                  number: 443
