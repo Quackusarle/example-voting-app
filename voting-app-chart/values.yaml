@@ -5,6 +5,11 @@ vote:
   service:
     type: ClusterIP
     port: 80
+  resources:
+    requests:
+      cpu: "100m"
+    limits:
+      cpu: "250m"
 
 result:
   repository: "quackusarle/result"
@@ -13,11 +18,23 @@ result:
   service:
     type: ClusterIP
     port: 80
+  resources:
+    requests:
+      cpu: "100m"
+    limits:
+      cpu: "250m"
 
 worker:
   repository: "quackusarle/worker"
   tag: "4"
   replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
 
 redis:
   image:
