@@ -1,32 +1,4 @@
 vote:
-  repository: "quackusarle/vote"
-  tag: "14"
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 80
-  resources:
-    requests:
-      cpu: "100m"
-    limits:
-      cpu: "250m"
-
-result:
-  repository: "quackusarle/result"
-  tag: "3"
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 80
-  resources:
-    requests:
-      cpu: "100m"
-    limits:
-      cpu: "250m"
-
-worker:
-  repository: "quackusarle/worker"
-  tag: "4"
   replicaCount: 1
   resources:
     requests:
@@ -35,6 +7,47 @@ worker:
     limits:
       cpu: "250m"
       memory: "256Mi"
+  service:
+    type: ClusterIP
+    port: 80
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 50
+
+result:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+  service:
+    type: ClusterIP
+    port: 80
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 50
+
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 50
 
 redis:
   image:
