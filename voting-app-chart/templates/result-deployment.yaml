@@ -20,3 +20,5 @@ spec:
         ports:
         - containerPort: 80
           name: result
+        resources:
+          {{- toYaml .Values.result.resources | nindent 10 }}

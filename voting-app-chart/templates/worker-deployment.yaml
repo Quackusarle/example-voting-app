@@ -17,3 +17,5 @@ spec:
       containers:
       - image: "{{ .Values.worker.repository }}:{{ .Values.worker.tag }}"
         name: worker
+        resources:
+          {{- toYaml .Values.worker.resources | nindent 10 }}
