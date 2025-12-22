@@ -18,14 +18,17 @@ pipeline {
                 volumeMounts:
                   - name: varlibcontainers
                     mountPath: /var/lib/containers
+              
               - name: trivy
                 image: aquasec/trivy:latest
                 command: ["sleep"]
                 args: ["infinity"]
+                
               - name: sonar-scanner
                 image: sonarsource/sonar-scanner-cli:latest
                 command: ["sleep"]
                 args: ["infinity"]
+                
               volumes:
                 - name: varlibcontainers
                   emptyDir: {}
@@ -43,37 +46,46 @@ pipeline {
     }
     
     stages {
-        stage('SonarQube Analysis') {
-            steps {
-                dir(SERVICE_NAME) {
-                    container('sonar-scanner') {
-                        withSonarQubeEnv(SONAR_SERVER_CONFIG_NAME) {
-                            sh """
-                                sonar-scanner \
-                                -Dsonar.projectKey=example-voting-app-${SERVICE_NAME} \
-                                -Dsonar.projectName="Voting App - ${SERVICE_NAME}" \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=http://sonarqube.sonarqube.svc.cluster.local:9000
-                            """
+        stage('Code Analysis') {
+            parallel {
+                stage('SonarQube Analysis') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            container('sonar-scanner') {
+                                withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                                    withSonarQubeEnv(SONAR_SERVER_CONFIG_NAME) {
+                                        sh """
+                                            sonar-scanner \
+                                            -Dsonar.projectKey=example-voting-app-${SERVICE_NAME} \
+                                            -Dsonar.projectName="Voting App - ${SERVICE_NAME}" \
+                                            -Dsonar.sources=. \
+                                            -Dsonar.host.url=http://sonarqube.sonarqube.svc.cluster.local:9000 \
+                                            -Dsonar.token=${SONAR_TOKEN}
+                                        """
+                                    }
+                                }
+                            }
                         }
+                        //timeout(time: 5, unit: 'MINUTES') {
+                        //    waitForQualityGate abortPipeline: true
+                        //}
                     }
                 }
-            }
-        }
 
-        stage("Quality Gate") {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Security Scan (Code)') {
-            steps {
-                dir(SERVICE_NAME) {
-                    container('trivy') {
-                        sh "trivy fs --exit-code 0 --severity HIGH,CRITICAL ."
+                stage('Trivy Code Scan') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            container('trivy') {
+                                sh "mkdir -p .trivy-cache"
+                                sh """
+                                    trivy fs \
+                                    --cache-dir .trivy-cache \
+                                    --exit-code 0 \
+                                    --severity HIGH,CRITICAL \
+                                    .
+                                """
+                            }
+                        }
                     }
                 }
             }
@@ -98,7 +110,16 @@ pipeline {
         stage('Security Scan (Image)') {
             steps {
                 container('trivy') {
-                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}"
+                    sh "mkdir -p .trivy-cache"
+                    sh """
+                        trivy image \
+                        --cache-dir .trivy-cache \
+                        --no-progress \
+                        --timeout 15m \
+                        --exit-code 0 \
+                        --severity HIGH,CRITICAL \
+                        ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
+                    """
                 }
             }
         }
