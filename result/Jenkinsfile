@@ -8,6 +8,8 @@ pipeline {
               containers:
               - name: buildah
                 image: quay.io/buildah/stable:latest
+                securityContext:
+                  privileged: true
                 command: ["sleep"]
                 args: ["infinity"]
                 env:
@@ -16,6 +18,14 @@ pipeline {
                 volumeMounts:
                   - name: varlibcontainers
                     mountPath: /var/lib/containers
+              - name: trivy
+                image: aquasec/trivy:latest
+                command: ["sleep"]
+                args: ["infinity"]
+              - name: sonar-scanner
+                image: sonarsource/sonar-scanner-cli:latest
+                command: ["sleep"]
+                args: ["infinity"]
               volumes:
                 - name: varlibcontainers
                   emptyDir: {}
@@ -29,9 +39,45 @@ pipeline {
         REPO_USER = 'Quackusarle'
         REPO_NAME = 'example-voting-app'
         BRANCH = 'main'
+        SONAR_SERVER_CONFIG_NAME = 'sonar-server'
     }
     
     stages {
+        stage('SonarQube Analysis') {
+            steps {
+                dir(SERVICE_NAME) {
+                    container('sonar-scanner') {
+                        withSonarQubeEnv(SONAR_SERVER_CONFIG_NAME) {
+                            sh """
+                                sonar-scanner \
+                                -Dsonar.projectKey=example-voting-app-${SERVICE_NAME} \
+                                -Dsonar.projectName="Voting App - ${SERVICE_NAME}" \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=http://sonarqube.sonarqube.svc.cluster.local:9000
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Security Scan (Code)') {
+            steps {
+                dir(SERVICE_NAME) {
+                    container('trivy') {
+                        sh "trivy fs --exit-code 0 --severity HIGH,CRITICAL ."
+                    }
+                }
+            }
+        }
 
         stage('Build and Push') {
             steps {
@@ -45,6 +91,14 @@ pipeline {
                             sh "buildah push ${DOCKERHUB_USER}/${SERVICE_NAME}:latest"
                         }
                     }
+                }
+            }
+        }
+
+        stage('Security Scan (Image)') {
+            steps {
+                container('trivy') {
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}"
                 }
             }
         }
