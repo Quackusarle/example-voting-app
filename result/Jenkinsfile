@@ -1,5 +1,5 @@
 pipeline {
-    agent {
+agent {
         kubernetes {
             yaml '''
             apiVersion: v1
@@ -20,14 +20,28 @@ pipeline {
                 image: aquasec/trivy:latest
                 command: ["sleep"]
                 args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
                 
               - name: sonar-scanner
                 image: sonarsource/sonar-scanner-cli:latest
                 command: ["sleep"]
                 args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
                 
               volumes:
+                - name: docker-config
+                  secret:
+                    secretName: dockerhub-secret
+                    items:
+                      - key: .dockerconfigjson
+                        path: config.json
                 - name: varlibcontainers
+                  emptyDir: {}
+                - name: workspace-volume
                   emptyDir: {}
             '''
         }
