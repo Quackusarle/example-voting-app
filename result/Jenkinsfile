@@ -1,49 +1,46 @@
 pipeline {
     agent {
-            kubernetes {
-                yaml '''
-                apiVersion: v1
-                kind: Pod
-                spec:
-                containers:
-                - name: kaniko
-                    image: ghcr.io/kaniko-build/dist/chainguard-dev-kaniko/executor:v1.25.5-debug
-                    command: ["sleep"]
-                    args: ["infinity"]
-                    volumeMounts:
-                    - name: workspace-volume
-                        mountPath: /workspace
-                    - name: docker-config
-                        mountPath: /kaniko/.docker
-                
-                - name: trivy
-                    image: aquasec/trivy:latest
-                    command: ["sleep"]
-                    args: ["infinity"]
-                    volumeMounts:
-                    - name: workspace-volume
-                        mountPath: /workspace
-                    
-                - name: sonar-scanner
-                    image: sonarsource/sonar-scanner-cli:latest
-                    command: ["sleep"]
-                    args: ["infinity"]
-                    volumeMounts:
-                    - name: workspace-volume
-                        mountPath: /workspace
-                    
-                volumes:
-                    - name: docker-config
-                    secret:
-                        secretName: dockerhub-secret
-                        items:
-                        - key: .dockerconfigjson
-                            path: config.json
-                    - name: workspace-volume
-                    emptyDir: {}
-                '''
-            }
+        kubernetes {
+            yaml '''
+            apiVersion: v1
+            kind: Pod
+            spec:
+              containers:
+              - name: kaniko
+                image: ghcr.io/kaniko-build/dist/chainguard-dev-kaniko/executor:v1.25.5-debug
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+                  - name: docker-config
+                    mountPath: /kaniko/.docker
+              - name: trivy
+                image: aquasec/trivy:latest
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+              - name: sonar-scanner
+                image: sonarsource/sonar-scanner-cli:latest
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+              volumes:
+                - name: docker-config
+                  secret:
+                    secretName: dockerhub-secret
+                    items:
+                      - key: .dockerconfigjson
+                        path: config.json
+                - name: workspace-volume
+                  emptyDir: {}
+            '''
         }
+    }
 
     environment {
         SERVICE_NAME = 'result'
@@ -57,7 +54,7 @@ pipeline {
     stages {
         stage('Code Analysis') {
             parallel {
-                stage('SonarQube Analysis') {
+                stage('SonarQube & Quality Gate') {
                     steps {
                         dir(SERVICE_NAME) {
                             container('sonar-scanner') {
@@ -75,9 +72,9 @@ pipeline {
                                 }
                             }
                         }
-                        //timeout(time: 5, unit: 'MINUTES') {
-                        //    waitForQualityGate abortPipeline: true
-                        //}
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: true
+                        }
                     }
                 }
 
@@ -85,10 +82,12 @@ pipeline {
                     steps {
                         dir(SERVICE_NAME) {
                             container('trivy') {
-                                sh "mkdir -p .trivy-cache"
+                                sh "mkdir -p /workspace/.trivy-cache"
                                 sh """
                                     trivy fs \
-                                    --cache-dir .trivy-cache \
+                                    --cache-dir /workspace/.trivy-cache \
+                                    --no-progress \
+                                    --timeout 15m \
                                     --exit-code 0 \
                                     --severity HIGH,CRITICAL \
                                     .
@@ -100,7 +99,7 @@ pipeline {
             }
         }
 
-        stage('Build and Push (Kaniko)') {
+        stage('Build and Push') {
             steps {
                 dir(SERVICE_NAME) {
                     container('kaniko') {
@@ -109,7 +108,8 @@ pipeline {
                             --context `pwd` \
                             --dockerfile `pwd`/Dockerfile \
                             --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} \
-                            --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:latest
+                            --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:latest \
+                            --cache=true
                         """
                     }
                 }
@@ -119,10 +119,12 @@ pipeline {
         stage('Security Scan (Image)') {
             steps {
                 container('trivy') {
-                    sh "mkdir -p .trivy-cache"
+                    sh "mkdir -p /workspace/.trivy-cache"
                     sh """
                         trivy image \
-                        --cache-dir .trivy-cache \
+                        --cache-dir /workspace/.trivy-cache \
+                        --no-progress \
+                        --timeout 15m \
                         --exit-code 0 \
                         --severity HIGH,CRITICAL \
                         ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
