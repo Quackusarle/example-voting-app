@@ -116,7 +116,7 @@ pipeline {
             }
         }
 
-        stage('Security Scan (Image)') {
+        stage('Trivy Image Scan') {
             steps {
                 container('trivy') {
                     sh "mkdir -p /workspace/.trivy-cache"
