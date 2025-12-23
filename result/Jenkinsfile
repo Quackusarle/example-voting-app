@@ -133,24 +133,29 @@ pipeline {
             }
         }
 
-        stage('Update Helm Values') {
+        stage('Update Manifests') {
             steps {
                 withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
                     script {
                         sh 'git config --global user.email "jenkins-ci@bot.com"'
                         sh 'git config --global user.name "Jenkins CI Bot"'
 
-                        def valuesFile = "voting-app-chart/values.yaml"
-                        def newRepo = "${DOCKERHUB_USER}/${SERVICE_NAME}"
+                        sh 'rm -rf ../manifests'
+                        sh "git clone https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/example-voting-app-manifests.git ../manifests"
                         
-                        sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
-                        sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${BUILD_NUMBER}\"|}' ${valuesFile}"
+                        dir("../manifests") {
+                            def valuesFile = "voting-app-chart/values.yaml"
+                            def newRepo = "${DOCKERHUB_USER}/${SERVICE_NAME}"
+                            
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${BUILD_NUMBER}\"|}' ${valuesFile}"
 
-                        sh "git add ${valuesFile}"
-                        sh "git diff-index --quiet HEAD || git commit -m 'CI: Update image for ${SERVICE_NAME} to tag ${BUILD_NUMBER}'"
-                        
-                        def remoteUrlWithToken = "https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/${REPO_NAME}.git"
-                        sh "git push ${remoteUrlWithToken} HEAD:${BRANCH}"
+                            sh "git add ${valuesFile}"
+                            sh "git diff-index --quiet HEAD || git commit -m 'ci: Update image for ${SERVICE_NAME} to ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}'"
+                            
+                            def remoteUrlWithToken = "https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/example-voting-app-manifests.git"
+                            sh "git push ${remoteUrlWithToken} HEAD:main"
+                        }
                     }
                 }
             }
