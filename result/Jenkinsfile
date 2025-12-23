@@ -39,8 +39,6 @@ agent {
                     items:
                       - key: .dockerconfigjson
                         path: config.json
-                - name: varlibcontainers
-                  emptyDir: {}
                 - name: workspace-volume
                   emptyDir: {}
             '''
