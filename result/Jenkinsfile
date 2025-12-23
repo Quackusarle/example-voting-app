@@ -15,7 +15,6 @@ pipeline {
                     mountPath: /workspace
                   - name: docker-config
                     mountPath: /kaniko/.docker
-
               - name: trivy
                 image: aquasec/trivy:latest
                 command: ["sleep"]
@@ -23,7 +22,6 @@ pipeline {
                 volumeMounts:
                   - name: workspace-volume
                     mountPath: /workspace
-
               - name: sonar-scanner
                 image: sonarsource/sonar-scanner-cli:latest
                 command: ["sleep"]
@@ -31,9 +29,8 @@ pipeline {
                 volumeMounts:
                   - name: workspace-volume
                     mountPath: /workspace
-
               - name: crane
-                image: cgr.dev/chainguard/crane:latest-dev
+                image: gcr.io/go-containerregistry/crane:debug
                 command: ["sleep"]
                 args: ["infinity"]
                 volumeMounts:
@@ -41,7 +38,6 @@ pipeline {
                     mountPath: /workspace
                   - name: docker-config
                     mountPath: /root/.docker
-
               volumes:
                 - name: docker-config
                   secret:
@@ -67,7 +63,7 @@ pipeline {
     stages {
         stage('Code Analysis') {
             parallel {
-                stage('SonarQube & Quality Gate') {
+                stage('SonarQube Scan') {
                     steps {
                         dir(SERVICE_NAME) {
                             container('sonar-scanner') {
@@ -122,7 +118,7 @@ pipeline {
                             --dockerfile `pwd`/Dockerfile \
                             --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} \
                             --no-push \
-                            --tarPath /workspace/image.tar \
+                            --tarPath /workspace/image.tar
                         """
                     }
                 }
@@ -144,11 +140,11 @@ pipeline {
             }
         }
 
-        stage('Push Image (Crane)') {
+        stage('Push Image') {
             steps {
                 container('crane') {
                     sh """
-                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
+                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} && \
                         crane tag ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} latest
                     """
                 }
