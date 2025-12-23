@@ -19,7 +19,7 @@ vote:
 
 result:
   repository: "quackusarle/result"
-  tag: "11"
+  tag: "19"
   replicaCount: 1
   
   resources:
