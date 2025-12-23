@@ -15,6 +15,7 @@ pipeline {
                     mountPath: /workspace
                   - name: docker-config
                     mountPath: /kaniko/.docker
+
               - name: trivy
                 image: aquasec/trivy:latest
                 command: ["sleep"]
@@ -22,6 +23,7 @@ pipeline {
                 volumeMounts:
                   - name: workspace-volume
                     mountPath: /workspace
+
               - name: sonar-scanner
                 image: sonarsource/sonar-scanner-cli:latest
                 command: ["sleep"]
@@ -29,6 +31,17 @@ pipeline {
                 volumeMounts:
                   - name: workspace-volume
                     mountPath: /workspace
+
+              - name: crane
+                image: cgr.dev/chainguard/crane:latest-dev
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+                  - name: docker-config
+                    mountPath: /root/.docker
+
               volumes:
                 - name: docker-config
                   secret:
@@ -86,10 +99,10 @@ pipeline {
                                 sh """
                                     trivy fs \
                                     --cache-dir /workspace/.trivy-cache \
-                                    --no-progress \
                                     --timeout 15m \
                                     --exit-code 0 \
                                     --severity HIGH,CRITICAL \
+                                    --no-progress \
                                     .
                                 """
                             }
@@ -99,7 +112,7 @@ pipeline {
             }
         }
 
-        stage('Build and Push') {
+        stage('Build Image (No Push)') {
             steps {
                 dir(SERVICE_NAME) {
                     container('kaniko') {
@@ -108,7 +121,8 @@ pipeline {
                             --context `pwd` \
                             --dockerfile `pwd`/Dockerfile \
                             --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} \
-                            --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:latest \
+                            --no-push \
+                            --tarPath /workspace/image.tar \
                             --cache=true
                         """
                     }
@@ -119,15 +133,24 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 container('trivy') {
-                    sh "mkdir -p /workspace/.trivy-cache"
                     sh """
                         trivy image \
-                        --cache-dir /workspace/.trivy-cache \
-                        --no-progress \
-                        --timeout 15m \
-                        --exit-code 0 \
-                        --severity HIGH,CRITICAL \
-                        ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
+                        --input /workspace/image.tar \
+                        --exit-code 1 \
+                        --severity CRITICAL \
+                        --ignore-unfixed \
+                        --no-progress
+                    """
+                }
+            }
+        }
+
+        stage('Push Image (Crane)') {
+            steps {
+                container('crane') {
+                    sh """
+                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
+                        crane tag ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} latest
                     """
                 }
             }
