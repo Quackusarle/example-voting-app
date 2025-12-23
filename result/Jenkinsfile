@@ -13,6 +13,8 @@ pipeline {
                 volumeMounts:
                   - name: workspace-volume
                     mountPath: /workspace
+                  - name: docker-config
+                    mountPath: /kaniko/.docker
               
               - name: trivy
                 image: aquasec/trivy:latest
