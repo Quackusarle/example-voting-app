@@ -6,18 +6,46 @@ pipeline {
             kind: Pod
             spec:
               containers:
-              - name: buildah
-                image: quay.io/buildah/stable:latest
+              - name: kaniko
+                image: ghcr.io/kaniko-build/dist/chainguard-dev-kaniko/executor:v1.25.5-debug
                 command: ["sleep"]
                 args: ["infinity"]
-                env:
-                - name: STORAGE_DRIVER
-                  value: vfs
                 volumeMounts:
-                  - name: varlibcontainers
-                    mountPath: /var/lib/containers
+                  - name: workspace-volume
+                    mountPath: /workspace
+                  - name: docker-config
+                    mountPath: /kaniko/.docker
+              - name: trivy
+                image: aquasec/trivy:latest
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+              - name: sonar-scanner
+                image: sonarsource/sonar-scanner-cli:latest
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+              - name: crane
+                image: gcr.io/go-containerregistry/crane:debug
+                command: ["sleep"]
+                args: ["infinity"]
+                volumeMounts:
+                  - name: workspace-volume
+                    mountPath: /workspace
+                  - name: docker-config
+                    mountPath: /root/.docker
               volumes:
-                - name: varlibcontainers
+                - name: docker-config
+                  secret:
+                    secretName: dockerhub-secret
+                    items:
+                      - key: .dockerconfigjson
+                        path: config.json
+                - name: workspace-volume
                   emptyDir: {}
             '''
         }
@@ -29,44 +57,123 @@ pipeline {
         REPO_USER = 'Quackusarle'
         REPO_NAME = 'example-voting-app'
         BRANCH = 'main'
+        SONAR_SERVER_CONFIG_NAME = 'sonar-server'
     }
     
     stages {
+        stage('Code Analysis') {
+            parallel {
+                stage('SonarQube Scan') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            container('sonar-scanner') {
+                                withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                                    withSonarQubeEnv(SONAR_SERVER_CONFIG_NAME) {
+                                        sh """
+                                            sonar-scanner \
+                                            -Dsonar.projectKey=example-voting-app-${SERVICE_NAME} \
+                                            -Dsonar.projectName="Voting App - ${SERVICE_NAME}" \
+                                            -Dsonar.sources=. \
+                                            -Dsonar.host.url=http://sonarqube.sonarqube.svc.cluster.local:9000 \
+                                            -Dsonar.token=${SONAR_TOKEN}
+                                        """
+                                    }
+                                }
+                            }
+                        }
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: true
+                        }
+                    }
+                }
 
-        stage('Build and Push') {
-            steps {
-                dir(SERVICE_NAME) {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                        container('buildah') {
-                            sh "buildah login -u ${USER} -p ${PASS} docker.io"
-                            sh "buildah bud --format docker -t ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} ."
-                            sh "buildah bud --format docker -t ${DOCKERHUB_USER}/${SERVICE_NAME}:latest ."
-                            sh "buildah push ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}"
-                            sh "buildah push ${DOCKERHUB_USER}/${SERVICE_NAME}:latest"
+                stage('Trivy Code Scan') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            container('trivy') {
+                                sh "mkdir -p /workspace/.trivy-cache"
+                                sh """
+                                    trivy fs \
+                                    --cache-dir /workspace/.trivy-cache \
+                                    --timeout 15m \
+                                    --exit-code 0 \
+                                    --severity HIGH,CRITICAL \
+                                    --no-progress \
+                                    .
+                                """
+                            }
                         }
                     }
                 }
             }
         }
 
-        stage('Update Helm Values') {
+        stage('Build Image') {
+            steps {
+                dir(SERVICE_NAME) {
+                    container('kaniko') {
+                        sh """
+                            /kaniko/executor \
+                            --context `pwd` \
+                            --dockerfile `pwd`/Dockerfile \
+                            --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} \
+                            --no-push \
+                            --tarPath /workspace/image.tar
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                container('trivy') {
+                    sh """
+                        trivy image \
+                        --input /workspace/image.tar \
+                        --exit-code 1 \
+                        --severity CRITICAL \
+                        --ignore-unfixed \
+                        --no-progress
+                    """
+                }
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                container('crane') {
+                    sh """
+                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} && \
+                        crane tag ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} latest
+                    """
+                }
+            }
+        }
+
+        stage('Update Manifests') {
             steps {
                 withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
                     script {
                         sh 'git config --global user.email "jenkins-ci@bot.com"'
                         sh 'git config --global user.name "Jenkins CI Bot"'
 
-                        def valuesFile = "voting-app-chart/values.yaml"
-                        def newRepo = "${DOCKERHUB_USER}/${SERVICE_NAME}"
+                        sh 'rm -rf ../manifests'
+                        sh "git clone https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/example-voting-app-manifests.git ../manifests"
                         
-                        sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
-                        sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${BUILD_NUMBER}\"|}' ${valuesFile}"
+                        dir("../manifests") {
+                            def valuesFile = "voting-app-chart/values.yaml"
+                            def newRepo = "${DOCKERHUB_USER}/${SERVICE_NAME}"
+                            
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  repository: .*|  repository: \"${newRepo}\"|}' ${valuesFile}"
+                            sh "sed -i -e '/^${SERVICE_NAME}:/,/^[a-zA-Z]/{s|  tag: .*|  tag: \"${BUILD_NUMBER}\"|}' ${valuesFile}"
 
-                        sh "git add ${valuesFile}"
-                        sh "git diff-index --quiet HEAD || git commit -m 'CI: Update image for ${SERVICE_NAME} to tag ${BUILD_NUMBER}'"
-                        
-                        def remoteUrlWithToken = "https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/${REPO_NAME}.git"
-                        sh "git push ${remoteUrlWithToken} HEAD:${BRANCH}"
+                            sh "git add ${valuesFile}"
+                            sh "git diff-index --quiet HEAD || git commit -m 'ci: Update image for ${SERVICE_NAME} to ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}'"
+                            
+                            def remoteUrlWithToken = "https://${REPO_USER}:${GITHUB_TOKEN}@github.com/${REPO_USER}/example-voting-app-manifests.git"
+                            sh "git push ${remoteUrlWithToken} HEAD:main"
+                        }
                     }
                 }
             }
@@ -76,7 +183,7 @@ pipeline {
     post {
         always {
             script {
-                try { container('buildah') { sh 'buildah logout docker.io' } } catch (e) {}
+                echo "Pipeline for ${SERVICE_NAME} completed."
             }
         }
     }
