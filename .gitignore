@@ -6,3 +6,9 @@ obj/
 node_modules/
 .terraform/
 .env
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+tfplan
+plan.txt
