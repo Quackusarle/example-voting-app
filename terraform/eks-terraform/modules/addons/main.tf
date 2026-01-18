@@ -4,11 +4,20 @@ resource "aws_eks_addon" "ebs_csi" {
 }
 
 resource "kubernetes_storage_class" "ebs_sc" {
-  metadata { name = "ebs-sc" }
-  storage_provisioner = "ebs.csi.aws.com"
-  reclaim_policy      = "Retain"
-  volume_binding_mode = "WaitForFirstConsumer"
-  parameters          = { type = "gp3" }
+  metadata {
+    name = "ebs-sc"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Retain"
+  volume_binding_mode    = "WaitForFirstConsumer"
+  allow_volume_expansion = true
+  parameters = {
+    type = "gp3"
+  }
 }
 
 resource "helm_release" "alb_controller" {
@@ -55,6 +64,7 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
   version          = "7.7.1"
+  wait = false
 
   values = [
     yamlencode({
@@ -73,7 +83,7 @@ resource "helm_release" "argocd" {
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
             "alb.ingress.kubernetes.io/listen-ports"     = jsonencode([{HTTP=80}])
           }
-          hosts = [""]
+          hosts = null
         }
       }
     })

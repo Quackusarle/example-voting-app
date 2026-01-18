@@ -1,6 +1,6 @@
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.21.0"
+  version = "18.31.2"
 
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
@@ -10,17 +10,10 @@ module "eks" {
   create_iam_role = false
   iam_role_arn    = var.iam_role_arn
   enable_irsa = false
-  manage_aws_auth_configmap = true
-  aws_auth_roles = [
-    {
-      rolearn  = var.iam_role_arn
-      username = "admin"
-      groups   = ["system:masters"]
-    }
-  ]
+  manage_aws_auth_configmap = false
+
   create_kms_key              = false
   create_cloudwatch_log_group = false
-  cluster_encryption_config   = {}
   eks_managed_node_groups = {
     main = {
       min_size     = var.node_min_size
