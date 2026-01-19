@@ -113,12 +113,16 @@ pipeline {
                 dir(SERVICE_NAME) {
                     container('kaniko') {
                         sh """
+                            rm -f /workspace/image.tar
+
                             /kaniko/executor \
                             --context `pwd` \
                             --dockerfile `pwd`/Dockerfile \
                             --destination ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} \
                             --no-push \
-                            --tarPath /workspace/image.tar
+                            --tarPath /workspace/image.tar \
+                            --cleanup \
+                            --verbosity info
                         """
                     }
                 }
@@ -140,17 +144,19 @@ pipeline {
             }
         }
 
+
+
         stage('Push Image') {
             steps {
                 container('crane') {
                     sh """
-                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} && \
+                        export DOCKER_CONFIG=/root/.docker
+                        crane push /workspace/image.tar ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER}
                         crane tag ${DOCKERHUB_USER}/${SERVICE_NAME}:${BUILD_NUMBER} latest
                     """
                 }
             }
         }
-
         stage('Update Manifests') {
             steps {
                 withCredentials([string(credentialsId: 'github-credentials', variable: 'GITHUB_TOKEN')]) {
