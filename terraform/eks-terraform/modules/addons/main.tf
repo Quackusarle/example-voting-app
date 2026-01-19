@@ -1,6 +1,9 @@
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name = var.cluster_name
   addon_name   = "aws-ebs-csi-driver"
+  
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
 }
 
 resource "kubernetes_storage_class" "ebs_sc" {
@@ -18,6 +21,8 @@ resource "kubernetes_storage_class" "ebs_sc" {
   parameters = {
     type = "gp3"
   }
+  
+  depends_on = [aws_eks_addon.ebs_csi]
 }
 
 resource "helm_release" "alb_controller" {
@@ -27,26 +32,25 @@ resource "helm_release" "alb_controller" {
   namespace  = "kube-system"
   version    = "1.9.1"
 
-  set {
-    name  = "clusterName"
-    value = var.cluster_name
-  }
+  values = [
+    yamlencode({
+      clusterName = var.cluster_name
+      vpcId       = var.vpc_id
+      region      = "us-east-1"
+      
+      enableServiceMutatorWebhook = true
 
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
+      serviceAccount = {
+        create = true
+        name   = "aws-load-balancer-controller"
+      }
+    })
+  ]
+}
 
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-
-  
-  set {
-    name  = "vpcId"
-    value = var.vpc_id
-  }
+resource "time_sleep" "wait_for_alb" {
+  depends_on = [helm_release.alb_controller]
+  create_duration = "60s"
 }
 
 resource "helm_release" "metrics_server" {
@@ -64,8 +68,10 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
   version          = "7.7.1"
-  wait = false
 
+  timeout          = 600
+  wait             = false
+  cleanup_on_fail  = true
   values = [
     yamlencode({
       configs = {
@@ -81,13 +87,14 @@ resource "helm_release" "argocd" {
             "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
             "alb.ingress.kubernetes.io/target-type"      = "ip"
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
-            "alb.ingress.kubernetes.io/listen-ports"     = jsonencode([{HTTP=80}])
+            "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
+            "alb.ingress.kubernetes.io/healthcheck-path" = "/healthz"
           }
-          hosts = null
+          hosts = [] 
         }
       }
     })
   ]
   
-  depends_on = [helm_release.alb_controller]
+  depends_on = [time_sleep.wait_for_alb]
 }
